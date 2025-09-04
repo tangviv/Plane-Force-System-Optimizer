@@ -1,31 +1,31 @@
-function [Ceq1_fit, Ceq1, Convergence_curve] = PFO(Particles_no, Max_iter, lb, ub, dim, fobj)
+function [Force1_fit, Force1, Convergence_curve] = PFO(Particles_no, Max_iter, lb, ub, dim, fobj)
 %-----------------------------------------------------------------------------------------------------------
 % PFO: Plane Force System Optimizer 
 %-----------------------------------------------------------------------------------------------------------
 
 % Initialization
-Ceq1 = zeros(1, dim); Ceq1_fit = inf; 
-Ceq2 = zeros(1, dim); Ceq2_fit = inf; 
+Force1 = zeros(1, dim); Force1_fit = inf; 
+Force2 = zeros(1, dim); Force2_fit = inf; 
 
-C = initialization(Particles_no, dim, ub, lb); 
+F = initialization(Particles_no, dim, ub, lb); 
 Convergence_curve = zeros(1, Max_iter);
 fitness = zeros(1, Particles_no);
 
 % Initial fitness calculation
 for i = 1:Particles_no
-    C(i,:) = bound_reflect(C(i,:), lb, ub); % Rebound boundary 
-    fit_val = fobj(C(i,:));
+    F(i,:) = bound_reflect(F(i,:), lb, ub); % Rebound boundary 
+    fit_val = fobj(F(i,:));
     % Stability check
     if isnan(fit_val) || isinf(fit_val)
         fprintf('Warning: Initial fitness NaN or Inf at particle %d, set to large number\n', i);
         fit_val = 1e10;
     end
     fitness(i) = fit_val;
-    if fitness(i) < Ceq1_fit
-        Ceq2_fit = Ceq1_fit; Ceq2 = Ceq1;
-        Ceq1_fit = fitness(i); Ceq1 = C(i,:);
-    elseif fitness(i) > Ceq1_fit && fitness(i) < Ceq2_fit
-        Ceq2_fit = fitness(i); Ceq2 = C(i,:);
+    if fitness(i) < Force1_fit
+        Force2_fit = Force1_fit; Force2 = Force1;
+        Force1_fit = fitness(i); Force1 = F(i,:);
+    elseif fitness(i) > Force1_fit && fitness(i) < Force2_fit
+        Force2_fit = fitness(i); Force2 = F(i,:);
     end
 end
 
@@ -34,7 +34,7 @@ for t = 1:Max_iter
     for i = 1:Particles_no
         P = randi([1,2]); % Branch selection
 
-        old_pos = C(i,:);
+        old_pos = F(i,:);
         old_fit = fitness(i);
 
         if P == 1 % ------------------ Branch 1 ------------------
@@ -47,8 +47,8 @@ for t = 1:Max_iter
                 eta = epsilon + delta * (1 - epsilon) * mu;
 
                 rand_indices = randperm(Particles_no, 2);
-                Fj = C(rand_indices(1), :);
-                Fk = C(rand_indices(2), :);
+                Fj = F(rand_indices(1), :);
+                Fk = F(rand_indices(2), :);
 
                 S = eta * (Fj - Fk);
 
@@ -63,14 +63,14 @@ for t = 1:Max_iter
                     u = 0.2; v = 0.9;
                     w = v - t * ((v - u) / Max_iter);
                     j_idx = randi(Particles_no);
-                    Fj = C(j_idx, :);
+                    Fj = F(j_idx, :);
                     theta = 2 * pi * rand;
                     phi = w * (Fj - old_pos) * exp(theta);
                     r1 = rand; r2 = rand;
                     new_pos = old_pos + phi * r1 .* sin(2 * pi * r2);
                 else
-                    Fm = mean(C, 1);
-                    sigma_rot = cos((pi / 2) * (t / Max_iter)^2) .* (Ceq1 - Fm);
+                    Fm = mean(F, 1);
+                    sigma_rot = cos((pi / 2) * (t / Max_iter)^2) .* (Force1 - Fm);
                     gamma_rot = (old_pos + 1e-6*randn(1,dim)) .* sigma_rot;
                     new_pos = gamma_rot;
                 end
@@ -81,15 +81,15 @@ for t = 1:Max_iter
         else % P == 2
             if rand > 0.5 % Plane Force Couple System
                 alpha = 1 - (t / Max_iter);
-                beta_couple = (Ceq1 - old_pos) * alpha;
+                beta_couple = (Force1 - old_pos) * alpha;
                 v_couple = rand;
-                new_pos = v_couple * Ceq1 + (1 - v_couple) * beta_couple;
+                new_pos = v_couple * Force1 + (1 - v_couple) * beta_couple;
             else % Plane Parallel Force System
                 h = 0.5;
                 r_par = rand;
                 theta_par = 2 * pi * rand;
-                levy_term = (r_par * cos(theta_par)) .* Levy(dim) .* r_par .* (h * (Ceq2 - old_pos));
-                new_pos = Ceq1 + levy_term + h * (Ceq1 - old_pos);
+                levy_term = (r_par * cos(theta_par)) .* Levy(dim) .* r_par .* (h * (Force2 - old_pos));
+                new_pos = Force1 + levy_term + h * (Force1 - old_pos);
             end
         end
 
@@ -105,24 +105,24 @@ for t = 1:Max_iter
         end
 
         if new_fit < old_fit
-            C(i,:) = new_pos;
+            F(i,:) = new_pos;
             fitness(i) = new_fit;
 
             % Update the global optimum
-            if new_fit < Ceq1_fit
-                Ceq2_fit = Ceq1_fit; Ceq2 = Ceq1;
-                Ceq1_fit = new_fit; Ceq1 = new_pos;
-            elseif new_fit > Ceq1_fit && new_fit < Ceq2_fit
-                Ceq2_fit = new_fit; Ceq2 = new_pos;
+            if new_fit < Force1_fit
+                Force2_fit = Force1_fit; Force2 = Force1;
+                Force1_fit = new_fit; Force1 = new_pos;
+            elseif new_fit > Force1_fit && new_fit < Force2_fit
+                Force2_fit = new_fit; Force2 = new_pos;
             end
         end
  
     end
 
     % Record the convergence values and ensure there are no NaN/Inf values.
-    if isnan(Ceq1_fit) || isinf(Ceq1_fit)
-        fprintf('Warning: Ceq1_fit NaN or Inf at iter %d, set to large number\n', t);
-        Ceq1_fit = 1e10;
+    if isnan(Force1_fit) || isinf(Force1_fit)
+        fprintf('Warning: Force1_fit NaN or Inf at iter %d, set to large number\n', t);
+        Force1_fit = 1e10;
     end
     Convergence_curve(t) = Ceq1_fit;
 end
@@ -130,14 +130,14 @@ end
 
 %% Initialization
 
-function C = initialization(Particles_no, dim, ub, lb)
+function F = initialization(Particles_no, dim, ub, lb)
     Boundary_no = numel(ub);
     if Boundary_no == 1
-        C = rand(Particles_no, dim) .* (ub - lb) + lb;
+        F = rand(Particles_no, dim) .* (ub - lb) + lb;
     else
-        C = zeros(Particles_no, dim);
+        F = zeros(Particles_no, dim);
         for i = 1:dim
-            C(:,i) = rand(Particles_no, 1) .* (ub(i) - lb(i)) + lb(i);
+            F(:,i) = rand(Particles_no, 1) .* (ub(i) - lb(i)) + lb(i);
         end
     end
 end
@@ -178,3 +178,4 @@ function o = Levy(d)
     step = u ./ abs(v).^(1 / beta);
     o = step;
 end
+
